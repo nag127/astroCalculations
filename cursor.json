@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "instructions": [
+    "This project is a Vedic Astrology Engine using Python.",
+    "All modules must be consistent with each other.",
+    "Use Skyfield with de421.bsp only.",
+    "Ensure functions imported in each file actually exist.",
+    "Fix astronomy calculations for topocentric longitudes.",
+    "Ensure nakshatra, dasha, panchanga, yogas, divisional charts, strengths, remedies all operate correctly.",
+    "Maintain accurate sidereal calculations using Lahiri ayanamsa.",
+    "When editing multi-file code, update all related files consistently.",
+    "Always keep imports clean and remove unused code.",
+    "Generate missing files or functions when needed."
+  ],
+  "models": {
+    "default": "gpt-4.1",
+    "rewrite": "gpt-4.1",
+    "autocomplete": "gpt-4o-mini",
+    "terminal": "gpt-4o-mini"
+  },
+  "paths": {
+    "include": [
+      "*.py",
+      "requirements.txt",
+      "*.md"
+    ],
+    "exclude": [
+      "build/",
+      "dist/",
+      "__pycache__/"
+    ]
+  }
+}
