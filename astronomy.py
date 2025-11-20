@@ -8,7 +8,14 @@ from ayanamsa import calculate_ayanamsa
 # The full DE441 kernel is > 3GB and cannot be memory-mapped by 32-bit Python.
 # Use the lighter DE421 kernel instead so the project works on all platforms.
 EPHEMERIS_FILE = 'de421.bsp'
-eph = load(EPHEMERIS_FILE)
+
+try:
+    eph = load(EPHEMERIS_FILE)
+except Exception as exc:  # pragma: no cover - load happens at import time
+    raise RuntimeError(
+        f"Failed to load ephemeris '{EPHEMERIS_FILE}'. "
+        "Ensure the BSP file is present and readable."
+    ) from exc
 
 # Planet positions from the kernel (geocentric when combined with Earth observer)
 planets_sf = {
@@ -26,8 +33,16 @@ earth = eph["earth"]
 
 
 def skyfield_time(dt, tz_str):
-    tz = pytz.timezone(tz_str)
-    dt_local = tz.localize(dt)
+    try:
+        tz = pytz.timezone(tz_str)
+    except pytz.UnknownTimeZoneError as exc:
+        raise ValueError(f"Unknown timezone '{tz_str}'.") from exc
+
+    try:
+        dt_local = tz.localize(dt)
+    except Exception as exc:
+        raise ValueError(f"Could not localize datetime {dt} for timezone {tz_str}.") from exc
+
     ts = load.timescale()
     return ts.from_datetime(dt_local)
 
@@ -36,10 +51,15 @@ def skyfield_time(dt, tz_str):
 # Convert planet to TOPOCENTRIC longitude
 # ----------------------------------------------------
 def planet_topocentric_longitude(planet, t, lat, lon):
-    observer = (earth + wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon)).at(t)
-    topo = observer.observe(planet).apparent()
-    _, lon_deg, _ = topo.ecliptic_latlon()
-    return lon_deg.degrees % 360
+    try:
+        observer = (earth + wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon)).at(t)
+        topo = observer.observe(planet).apparent()
+        _, lon_deg, _ = topo.ecliptic_latlon()
+        return lon_deg.degrees % 360
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to compute topocentric longitude for lat={lat}, lon={lon}"
+        ) from exc
 
 
 # ----------------------------------------------------
