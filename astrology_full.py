@@ -1,6 +1,7 @@
 # astrology_full.py
 
 from datetime import datetime
+from typing import Any
 
 # Basic components
 from astronomy import get_moon_longitude, get_sidereal_planets, calculate_lagna
@@ -30,10 +31,38 @@ from divisional import navamsa, dasamsa, saptamsa
 # Transits (Gochar)
 from transits import current_transits, transit_vs_natal, sade_sati
 
+try:
+    import numpy as np
+    _HAS_NUMPY = True
+except Exception:  # pragma: no cover
+    np = None  # type: ignore
+    _HAS_NUMPY = False
+
 
 class AstrologyComputationError(RuntimeError):
     """Raised when astrology_full cannot build the final payload."""
     pass
+
+
+def _json_safe(value: Any):
+    if _HAS_NUMPY:
+        if isinstance(value, np.bool_):
+            return bool(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        if isinstance(value, np.floating):
+            return float(value)
+    if isinstance(value, (datetime, )):
+        return value.isoformat()
+    return value
+
+
+def _make_json_safe(obj: Any):
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(v) for v in obj]
+    return _json_safe(obj)
 
 
 def astrology_full(dob, tob, tz_str, latitude, longitude):
@@ -98,7 +127,7 @@ def astrology_full(dob, tob, tz_str, latitude, longitude):
             f"Failed to compute astrology data: {exc}"
         ) from exc
 
-    return {
+    result = {
         "meta": {
             "dob": dob,
             "tob": tob,
@@ -142,3 +171,5 @@ def astrology_full(dob, tob, tz_str, latitude, longitude):
             "sade_sati": sade_sati_status
         }
     }
+
+    return _make_json_safe(result)
