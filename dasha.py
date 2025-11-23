@@ -37,7 +37,8 @@ def get_dasha_balance_at_birth(moon_sidereal_deg):
 
     years = int(remaining_years)
     months = int((remaining_years - years) * 12)
-    days = int((((remaining_years - years) * 12) - months) * 30.44)
+    # Vimshottari dasha uses 30-day months, not 30.44
+    days = int((((remaining_years - years) * 12) - months) * 30)
 
     return {
         "starting_mahadasha": start_lord,
@@ -52,9 +53,12 @@ def get_dasha_balance_at_birth(moon_sidereal_deg):
 
 # ---------------------------------------------------
 # Add years-months-days to datetime
+# Vimshottari dasha uses a 360-day year system (not solar year)
+# 1 year = 360 days, 1 month = 30 days
 # ---------------------------------------------------
 def add_years_months_days(dt, years, months, days):
-    total_days = int(years * 365.25 + months * 30.44 + days)
+    # Vimshottari dasha uses 360-day years and 30-day months
+    total_days = int(years * 360 + months * 30 + days)
     return dt + timedelta(days=total_days)
 
 
