@@ -61,12 +61,12 @@ def add_years_months_days(dt, years, months, days):
 # ---------------------------------------------------
 # Compute Full Mahadashas (9 Lords)
 # ---------------------------------------------------
-def compute_mahadashas(starting_lord, birth_dt):
+def compute_mahadashas(starting_lord, birth_dt, moon_sidereal):
     md_list = []
     idx = DASHA_ORDER.index(starting_lord)
 
     # First: only the remaining balance from birth
-    bal = get_dasha_balance_at_birth_mini(birth_dt, starting_lord)
+    bal = get_dasha_balance_at_birth_mini(birth_dt, starting_lord, moon_sidereal)
     md_list.append(bal)
 
     # Next: full cycles
@@ -88,12 +88,37 @@ def compute_mahadashas(starting_lord, birth_dt):
 
 
 # Helper for first Mahadasha only
-def get_dasha_balance_at_birth_mini(birth_dt, lord):
-    bal = get_dasha_balance_at_birth(0)  # dummy, replaced below
-    # direct override
-    import copy
-    bal = copy.deepcopy(bal)
-    bal["mahadasha"] = lord
+def get_dasha_balance_at_birth_mini(birth_dt, lord, moon_sidereal):
+    # Calculate the actual balance using the moon_sidereal position
+    bal = get_dasha_balance_at_birth(moon_sidereal)
+    
+    # Verify the lord matches (it should, but double-check)
+    if bal["starting_mahadasha"] != lord:
+        # If it doesn't match, recalculate with the correct lord's balance
+        # This can happen due to rounding issues at nakshatra boundaries
+        nak_size = 360 / 27
+        nak_index = int(moon_sidereal // nak_size)
+        calculated_lord = DASHA_ORDER[nak_index % 9]
+        
+        if calculated_lord != lord:
+            # Use the provided lord and recalculate balance for that lord
+            portion_completed = (moon_sidereal % nak_size) / nak_size
+            portion_remaining = 1 - portion_completed
+            total_years = DASHA_YEARS[lord]
+            remaining_years = total_years * portion_remaining
+            
+            years = int(remaining_years)
+            months = int((remaining_years - years) * 12)
+            days = int((((remaining_years - years) * 12) - months) * 30.44)
+            
+            bal = {
+                "starting_mahadasha": lord,
+                "remaining_years_exact": remaining_years,
+                "years": years,
+                "months": months,
+                "days": days,
+            }
+
     years = bal["years"]
     months = bal["months"]
     days = bal["days"]
@@ -181,7 +206,7 @@ def build_full_dasha_tree(starting_lord, birth_dt, moon_sidereal):
        }
     ]
     """
-    md_list = compute_mahadashas(starting_lord, birth_dt)
+    md_list = compute_mahadashas(starting_lord, birth_dt, moon_sidereal)
 
     full = []
 
