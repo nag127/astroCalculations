@@ -4,8 +4,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional, List
 
 from astrology_full import astrology_full, AstrologyComputationError
+from crewai_answer import generate_answer_with_crewai
 
 
 class AstroRequest(BaseModel):
@@ -14,6 +16,16 @@ class AstroRequest(BaseModel):
     tz: str = Field(..., description="IANA timezone string", example="Asia/Kolkata")
     latitude: float = Field(..., example=16.1817369)
     longitude: float = Field(..., example=81.1348181)
+
+
+class AnswerRequest(BaseModel):
+    """Request model for CrewAI-based answer generation."""
+    question: str = Field(..., description="User's astrology question")
+    chart_data: Dict[str, Any] = Field(..., description="Full astrology chart JSON data")
+    needed_sections: List[str] = Field(default_factory=list, description="Chart sections needed for answer")
+    current_date: str = Field(..., description="Current date in YYYY-MM-DD format")
+    dasha_info: Optional[Dict[str, Any]] = Field(None, description="Dasha information if needed")
+    planner_response: Optional[str] = Field(None, description="Planner's analysis if available")
 
 
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +64,30 @@ def compute_astrology(payload: AstroRequest):
     except Exception as exc:  # pragma: no cover - just defensive
         logger.exception("Unexpected error while processing request")
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+@app.post("/answer")
+def generate_answer(payload: AnswerRequest):
+    """
+    Generate astrology answers using CrewAI multi-agent system.
+    This endpoint replaces direct OpenAI calls with a more sophisticated agent-based approach.
+    """
+    try:
+        answer = generate_answer_with_crewai(
+            question=payload.question,
+            chart_data=payload.chart_data,
+            needed_sections=payload.needed_sections,
+            current_date=payload.current_date,
+            dasha_info=payload.dasha_info,
+            planner_response=payload.planner_response
+        )
+        return {
+            "answer": answer,
+            "success": True
+        }
+    except Exception as exc:
+        logger.exception("Error generating answer with CrewAI")
+        raise HTTPException(status_code=500, detail=f"Error generating answer: {str(exc)}") from exc
 
 
 @app.exception_handler(Exception)
