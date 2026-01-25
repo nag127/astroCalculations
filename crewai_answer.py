@@ -24,21 +24,31 @@ class AnswerRequest(BaseModel):
     planner_response: Optional[str] = Field(None, description="Planner's analysis if available")
 
 
+# Store chart data globally so tools can access it
+_chart_data_global: Dict[str, Any] = {}
+_dasha_info_global: Dict[str, Any] = {}
+
+
 @tool
-def analyze_chart_section(section_name: str, chart_data: Dict[str, Any]) -> str:
+def analyze_chart_section(section_name: str) -> str:
     """
     Analyze a specific section of the astrology chart.
     
     Args:
-        section_name: Name of the chart section (e.g., 'planets', 'houses', 'dasha')
-        chart_data: Full chart JSON data
+        section_name: Name of the chart section (e.g., 'planets', 'houses', 'dasha', 'lagna', 'moon', 'transits')
     
     Returns:
-        Analysis of the requested section
+        Analysis of the requested section in JSON format
     """
-    section = chart_data.get(section_name, {})
+    global _chart_data_global
+    
+    if not _chart_data_global:
+        return "Chart data not available. Please ensure chart data is loaded."
+    
+    section = _chart_data_global.get(section_name, {})
     if not section:
-        return f"Section '{section_name}' not found in chart data."
+        available_sections = list(_chart_data_global.keys())
+        return f"Section '{section_name}' not found. Available sections: {', '.join(available_sections)}"
     
     # Format the section data for analysis
     if isinstance(section, dict):
@@ -47,26 +57,46 @@ def analyze_chart_section(section_name: str, chart_data: Dict[str, Any]) -> str:
 
 
 @tool
-def get_dasha_timing(dasha_info: Dict[str, Any], question: str) -> str:
+def get_all_chart_sections() -> str:
     """
-    Extract relevant dasha timing information based on the question.
-    
-    Args:
-        dasha_info: Dasha information dictionary
-        question: User's question to determine what timing info is needed
+    Get a list of all available chart sections.
     
     Returns:
-        Relevant dasha timing information
+        List of available chart section names
     """
-    if not dasha_info:
-        return "No dasha information available."
+    global _chart_data_global
     
-    # Extract current dasha if available
-    current = dasha_info.get('current_dasha_info', {})
-    if current:
-        return json.dumps(current, indent=2)
+    if not _chart_data_global:
+        return "Chart data not available."
     
-    return json.dumps(dasha_info, indent=2)
+    sections = list(_chart_data_global.keys())
+    return f"Available chart sections: {', '.join(sections)}"
+
+
+@tool
+def get_dasha_timing() -> str:
+    """
+    Extract relevant dasha timing information from the chart.
+    Use this tool to get current dasha periods and timing information.
+    
+    Returns:
+        Relevant dasha timing information in JSON format
+    """
+    global _dasha_info_global, _chart_data_global
+    
+    # First try dasha_info_global (if passed separately)
+    if _dasha_info_global:
+        current = _dasha_info_global.get('current_dasha_info', {})
+        if current:
+            return json.dumps(current, indent=2)
+        return json.dumps(_dasha_info_global, indent=2)
+    
+    # Fallback to chart data dasha section
+    if _chart_data_global and 'dasha' in _chart_data_global:
+        dasha_section = _chart_data_global['dasha']
+        return json.dumps(dasha_section, indent=2)
+    
+    return "No dasha information available in the chart data."
 
 
 def create_astrology_crew(
@@ -91,6 +121,22 @@ def create_astrology_crew(
     Returns:
         Final answer string
     """
+    global _chart_data_global, _dasha_info_global
+    
+    # Store chart data globally so tools can access it
+    _chart_data_global = chart_data
+    _dasha_info_global = dasha_info or {}
+    
+    # Format chart data summary for agent context
+    chart_summary = f"""
+    Chart Data Available:
+    - Available sections: {', '.join(list(chart_data.keys()))}
+    - Needed sections: {', '.join(needed_sections) if needed_sections else 'All sections'}
+    - Current date: {current_date}
+    """
+    
+    if dasha_info:
+        chart_summary += f"\n- Dasha information: Available (use get_dasha_timing tool)"
     
     # Chart Analyst Agent - Analyzes the chart data
     chart_analyst = Agent(
@@ -104,9 +150,13 @@ def create_astrology_crew(
         - Yogas and planetary combinations
         - Divisional charts (D1, D9, D10, etc.)
         
-        Your task is to carefully examine the chart data and identify the key astrological factors
+        IMPORTANT: The full chart data is available to you through the analyze_chart_section tool.
+        You MUST use this tool to examine the chart data. Do NOT ask the user for chart information.
+        The chart data has already been calculated and provided to you.
+        
+        Your task is to carefully examine the chart data using the tools and identify the key astrological factors
         relevant to the user's question.""",
-        tools=[analyze_chart_section],
+        tools=[analyze_chart_section, get_all_chart_sections],
         verbose=True,
         allow_delegation=False
     )
@@ -134,44 +184,63 @@ def create_astrology_crew(
         description=f"""
         Analyze the astrology chart to answer this question: "{question}"
         
-        Current Date: {current_date}
-        
-        Chart sections to focus on: {', '.join(needed_sections) if needed_sections else 'All relevant sections'}
+        {chart_summary}
         
         {f"Planner's analysis: {planner_response}" if planner_response else ""}
         
+        CRITICAL INSTRUCTIONS:
+        1. Use the analyze_chart_section tool to examine each relevant chart section
+        2. Start by calling get_all_chart_sections to see what's available
+        3. For each needed section, use analyze_chart_section('section_name') to get the data
+        4. If timing is involved, use get_dasha_timing() to get dasha information
+        5. DO NOT ask the user for chart data - it's already provided and accessible via tools
+        
         Examine the chart data carefully and identify:
-        1. Key planetary positions and their houses
-        2. Relevant yogas or combinations
-        3. Dasha information if timing is involved
-        4. Any other factors relevant to the question
+        1. Key planetary positions and their houses (use analyze_chart_section('planets'))
+        2. House placements (use analyze_chart_section('houses'))
+        3. Dasha information if timing is involved (use get_dasha_timing())
+        4. Relevant yogas or combinations (use analyze_chart_section('yogas'))
+        5. Transits if available (use analyze_chart_section('transits'))
+        6. Any other factors relevant to the question
         
         Provide a detailed analysis of the chart factors relevant to answering the question.
+        Base your analysis on the actual chart data you retrieve using the tools.
         """,
         agent=chart_analyst,
-        expected_output="A detailed analysis of relevant chart factors"
+        expected_output="A detailed analysis of relevant chart factors based on actual chart data"
     )
     
     # Task 2: Generate the answer
     answer_task = Task(
         description=f"""
-        Based on the chart analysis, provide a comprehensive answer to: "{question}"
+        Based on the chart analysis from the previous task, provide a comprehensive answer to: "{question}"
+        
+        Current Date: {current_date}
         
         Requirements:
-        1. Be specific and accurate based on the actual chart data
-        2. If timing is involved, use the dasha information provided
-        3. Explain astrological concepts clearly
-        4. Provide practical insights and guidance
-        5. If remedies are appropriate, suggest them
+        1. Use the chart analysis provided by the Chart Analyst - it contains the actual chart data
+        2. Be specific and accurate based on the actual chart data from the analysis
+        3. If timing is involved, use the dasha information from the analysis or use get_dasha_timing() tool
+        4. Reference specific planetary positions, houses, and dasha periods from the chart
+        5. Explain astrological concepts clearly
+        6. Provide practical insights and guidance
+        7. If remedies are appropriate, suggest them
+        
+        IMPORTANT: 
+        - The chart data has already been analyzed in the previous task
+        - You have access to the full chart through tools if you need additional details
+        - DO NOT ask the user for chart information - it's already available
+        - Base your answer on the actual chart calculations, not general knowledge
         
         The answer should be:
         - Clear and easy to understand
-        - Based on actual chart calculations
-        - Specific rather than generic
+        - Based on actual chart calculations (reference specific planets, houses, dashas)
+        - Specific rather than generic (mention actual planetary positions and periods)
         - Helpful and actionable when possible
+        - Include timing information if the question asks "when"
         """,
         agent=answer_specialist,
-        expected_output="A comprehensive, accurate answer to the user's astrology question",
+        expected_output="A comprehensive, accurate answer to the user's astrology question based on their actual chart data",
         context=[analyze_task]
     )
     
